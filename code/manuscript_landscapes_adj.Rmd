@@ -1,0 +1,242 @@
+---
+title: "3D Landscapes biv. or XBB Boost, human and hamster sera merged"
+author: "Antonia Netzl"
+date: "2025-03-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+## Base Map 
+```{r}
+setwd("~/Documents/smith/labbook/kimpel_paper/")
+library(Racmacs)
+library(tidyverse)
+library(r3js)
+library(ablandscapes)
+library(htmlwidgets)
+library(ggplot2)
+source("./functions/sams_landscape_functions.R")
+
+
+set.seed(100)
+
+map <- read.acmap(file.path("data", "maps", "map-merged-adj.ace"))
+lims <- Racmacs:::mapPlotLims(map, sera = FALSE)
+
+lndscp_list <-  readRDS(file.path("data", "landscape_fit", "lod2_biv_boosts_gmt_idvl_ags_sub_hamster_merged_sub_adj.rds"))
+
+lndscp_fits <- readRDS("data/landscape_fit/lod2_biv_boost_fits_ags_sub_hamster_merged_sub_adj.rds")
+
+lndscp_fits_unadj <- readRDS("data/landscape_fit/biv_boost_fits_ags_sub_hamster_merged_sub.rds")
+
+layout(matrix(c(1), ncol = 1, byrow = T))
+par(oma=c(0, 0, 0, 0), mar=c(0.4, 0.4, 0.1, 0))
+
+plot(map, plot_stress = TRUE)
+
+layout(matrix(c(1), ncol = 1, byrow = T))
+
+```
+
+Hamster sera shown as open triangles. BA.1 reactivity increased by x2.4, JN.1 reactivity reduced by x0.2, Gamma reactivity reduced by x0.5.
+
+Landscape titer (multi exposure) reactivities were adjusted by the same amount. Titers below the Limit of Detection (<LOD) titers were dealt with as LOD/2. The limit of detection for <LOD titers was adjusted by the same amount.
+
+# Landscapes for reduced map
+
+## GMT landscapes
+
+### No event
+```{r, out.width="110%"}
+lndscp_list$`no event first GMT`
+```
+
+### infection
+```{r, out.width="110%"}
+lndscp_list$`infection first GMT`
+```
+
+### XBB.1.5 boost
+```{r, out.width="110%"}
+lndscp_list$`vaccine first GMT`
+```
+
+### Infection + XBB.1.5 Boost
+```{r, out.width="110%"}
+lndscp_list$`vaccine + inf first GMT`
+```
+
+## Individual landscapes
+
+### No event first
+```{r, out.width="110%"}
+lndscp_list$noeventfirst
+```
+
+### No event second
+```{r, out.width="110%"}
+lndscp_list$noeventsecond
+```
+
+### Infection first
+```{r, out.width="110%"}
+lndscp_list$infectionfirst
+```
+
+### Infection second
+```{r, out.width="110%"}
+lndscp_list$infectionsecond
+```
+
+### XBB.1.5 boost first
+```{r, out.width="110%"}
+lndscp_list$vaccinefirst
+```
+
+### XBB.1.5 boost second
+```{r, out.width="110%"}
+lndscp_list$vaccinesecond
+```
+
+### XBB.1.5 + Infection first
+```{r, out.width="110%"}
+lndscp_list$`vaccine+inffirst`
+```
+
+### XBB.1.5 + Infection second
+```{r, out.width="110%"}
+lndscp_list$`vaccine+infsecond`
+```
+
+### Landscape slopes
+
+Landscape slopes quantify cross neutralization
+
+```{r}
+# get landscape slope values
+slopes <- lapply(lndscp_fits$landscape_fit, function(x) x$cone$cone_slope)
+sr_groups <- lapply(lndscp_fits$landscape_fit, function(x){
+  rname <- rownames(x$logtiters)[1]
+  strsplit(rname, "_")[[1]][2]
+  })
+
+slopes <- unlist(slopes)
+names(slopes) <- unlist(sr_groups)
+
+slopes
+```
+
+## Landscape residuals
+
+Difference between fitted and measured data (calculated GMT).
+
+```{r}
+sr_group_levels <- c(paste("no event", c("first", "second")),
+  paste("infection", c("first", "second")),
+  paste("vaccine", c("first", "second")),
+  paste("vaccine + inf", c("first", "second")))
+
+fits_temp <- combine_landscape_and_calculated_gmt(lndscp_fits$landscape_fit, lndscp_fits$gmt_data, 2) %>%
+  mutate(Data = paste0(Data, "adj"))
+
+fits_temp_unadj <- combine_landscape_and_calculated_gmt(lndscp_fits_unadj$landscape_fit, lndscp_fits_unadj$gmt_data, 2)
+  
+fits_temp <- rbind(fits_temp, fits_temp_unadj)
+
+comb_residuals_adj <- rmse_per_variant(lndscp_fits$landscape_fit, sr_group_fields = 2) %>%
+  mutate(Data = "adj")
+
+comb_residuals <- rmse_per_variant(lndscp_fits_unadj$landscape_fit, sr_group_fields = 2)  %>%
+  mutate(Data = "unadj") %>%
+  rbind(comb_residuals_adj)
+
+biorep_plot <- plot_lndscp_calculated_gmt_lineplot(fits_temp %>%
+                                                     mutate(sr_group = factor(sr_group, levels = sr_group_levels)), unique(fits_temp$ag_name), lower_lim = 0)
+
+
+sub_residuals <- comb_residuals %>%
+  select(sr_group, ag_name, rmse, residual_type, Data) %>%
+  unique()
+
+
+sub_residuals %>%
+  mutate(sr_group = factor(sr_group, sr_group_levels)) %>%
+  ggplot(aes(x = ag_name, y = rmse, fill = Data)) + 
+ # geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(color = "grey20", shape = 21, position = position_dodge(width = 0.2)) + 
+  scale_x_discrete(limits = c(unique(sub_residuals$ag_name)),
+                   name = "Variant") +
+  ylab("RMSE") + 
+  ylim(c(0,max(ceiling(sub_residuals$rmse)))) +
+  scale_y_continuous(labels = function(x) paste0(round(2^x, 1), "x")) +
+  facet_wrap(~sr_group, ncol = 2) + 
+  theme_bw() +
+  theme(strip.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)) -> residuals_plot
+
+# fits_temp %>%
+#   group_by(ag_name, sr_group) %>%
+#   mutate(gmt_diff = logtiter[Data == "Calculated GMT"] - logtiter) %>%
+#   filter(Data != "Calculated GMT") -> gmt_diff
+# 
+# 
+# gmt_diff %>%
+#     ggplot(aes(x = ag_name, y = gmt_diff)) +
+#     geom_hline(yintercept = 0, linetype = "dashed") +
+#     geom_point(color = "grey20", shape = 21, position = position_dodge(width = 0.2)) +
+#     scale_y_continuous(name = "Calculated/Fitted GMT",
+#                       # limits = c(ymin, ymax),
+#                       # breaks = seq(ymin, ymax, 0.5),
+#                        labels = function(x) paste0(round(2^x, 1), "x")) +
+#     facet_wrap(~sr_group) +
+#     scale_x_discrete(limits = unique(gmt_diff$ag_name),
+#                      name = "Variant") +
+#   #  scale_fill_manual(values = ag_colors, name = "Variant") +
+#   #  scale_color_manual(values = ag_colors, name = "Variant") +
+#     theme_bw() +
+#     theme(strip.background = element_blank(),
+#           axis.text.x = element_text(angle = 90, hjust = 1)) -> p_gmt_diff
+```
+
+### Fitted and calculated GMT
+```{r}
+biorep_plot
+```
+
+
+
+### Residuals
+
+RMSE (root mean squared error) between individual sample titers and individual landscape fits. Difference is given as a factor as it is the difference of log2 titers.
+
+```{r}
+residuals_plot
+```
+
+## Difference between adjusted and unadjusted residuals
+```{r}
+sub_residuals %>%
+  pivot_wider(names_from = "Data", values_from = "rmse") %>%
+  mutate(diff = adj - unadj) -> diff_rmse
+
+
+diff_rmse %>%
+  mutate(sr_group = factor(sr_group, sr_group_levels)) %>%
+  ggplot(aes(x = ag_name, y = diff)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+ # geom_line(position = position_dodge(width = 0.2)) +
+  geom_point(color = "grey20", shape = 21, position = position_dodge(width = 0.2)) + 
+  scale_x_discrete(limits = c(unique(sub_residuals$ag_name)),
+                   name = "Variant") +
+  ylab("RMSE(Adj) - RMSE(Unadj)") + 
+#  ylim(c(-4,4)) +
+  scale_y_continuous(labels = function(x) paste0(round(2^x, 1), "x"),
+                     limits = c(-1.5, 1.5)) +
+  facet_wrap(~sr_group, ncol = 2) + 
+  theme_bw() +
+  theme(strip.background = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
