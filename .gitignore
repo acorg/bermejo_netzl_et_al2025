@@ -47,3 +47,10 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# don't push data until published
+data/
+*.ace
+
+# don't push drafts
+drafts/
